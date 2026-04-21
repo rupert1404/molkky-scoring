@@ -1,0 +1,842 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mölkky Score Tracker</title>
+<style>
+  :root {
+    --bg: #0e0e0e;
+    --surface: #1a1a1a;
+    --surface2: #242424;
+    --border: #333;
+    --accent: #f5c842;
+    --accent2: #e8533a;
+    --win: #3ecf7a;
+    --text: #f0ede8;
+    --muted: #777;
+    --cell-active: #2a2400;
+    --cell-active-border: #f5c842;
+    --eliminated: #3a1a1a;
+     --header-height: 80px;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Space Mono', monospace;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* HEADER */
+  header {
+    padding: 18px 24px 14px;
+    border-bottom: 2px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    background: var(--bg);
+    z-index: 50;
+    height: var(--header-height);
+  }
+
+  header h1 {
+    font-weight: 800;
+    font-size: 1.5rem;
+    letter-spacing: -0.5px;
+  }
+
+  header h1 span { color: var(--accent); }
+
+  .header-actions { display: flex; gap: 10px; }
+
+  .btn {
+    font-family: 'Space Mono', monospace;
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 8px 14px;
+    border: 2px solid var(--border);
+    background: transparent;
+    color: var(--text);
+    cursor: pointer;
+    letter-spacing: 0.5px;
+    transition: all 0.15s;
+    text-transform: uppercase;
+  }
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+  .btn-accent {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #000;
+  }
+  .btn-accent:hover { background: #ffd84a; border-color: #ffd84a; color: #000; }
+
+  /* SETUP SCREEN */
+  #setup-screen {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: calc(100vh - 70px);
+    padding: 40px 20px 120px;
+  }
+
+  .setup-card {
+    width: 100%;
+    max-width: 560px;
+    border: 2px solid var(--border);
+    background: var(--surface);
+    padding: 36px;
+  }
+
+  .setup-card h2 {
+    font-weight: 800;
+    font-size: 1.6rem;
+    margin-bottom: 6px;
+  }
+
+  .setup-card p {
+    color: var(--muted);
+    font-size: 0.78rem;
+    margin-bottom: 30px;
+  }
+
+  .player-inputs { display: flex; flex-direction: column; gap: 10px; margin-bottom: 28px; }
+
+  .player-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .player-num {
+    width: 28px;
+    text-align: center;
+    font-size: 0.75rem;
+    color: var(--muted);
+    flex-shrink: 0;
+  }
+
+  .player-input {
+    flex: 1;
+    background: var(--bg);
+    border: 2px solid var(--border);
+    color: var(--text);
+    font-family: 'Space Mono', monospace;
+    font-size: 0.85rem;
+    padding: 10px 12px;
+    outline: none;
+    transition: border-color 0.15s;
+  }
+  .player-input:focus { border-color: var(--accent); }
+  .player-input::placeholder { color: var(--muted); }
+
+  .remove-btn {
+    background: none;
+    border: 2px solid transparent;
+    color: var(--muted);
+    cursor: pointer;
+    font-size: 1rem;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+  }
+  .remove-btn:hover { color: var(--accent2); border-color: var(--accent2); }
+
+  .add-player-btn {
+    background: none;
+    border: 2px dashed var(--border);
+    color: var(--muted);
+    cursor: pointer;
+    font-family: 'Space Mono', monospace;
+    font-size: 0.78rem;
+    padding: 10px;
+    width: 100%;
+    transition: all 0.15s;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .add-player-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* GAME SCREEN */
+  #game-screen { display: none; padding-bottom: 120px; }
+
+  /* SCOREBOARD TABLE */
+  table {
+    table-layout: fixed;
+    border-collapse: collapse;
+    width: 100%;
+  }
+
+  thead th {
+    padding: 14px 8px;
+    font-weight: 700;
+    font-size: 0.8rem;
+    text-align: center;
+    border-bottom: 2px solid var(--border);
+    border-right: 1px solid var(--border);
+    position: sticky;
+    top: var(--header-height);
+    background: var(--surface);
+    z-index: 10;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  thead th.round-header {
+    color: var(--muted);
+    font-family: 'Space Mono', monospace;
+    font-size: 0.7rem;
+    font-weight: 400;
+    background: var(--bg);
+  }
+
+  thead th.winner-col {
+    color: var(--win);
+  }
+  thead th.winner-col::after {
+    content: ' 🏆';
+  }
+
+  thead th.eliminated-col {
+    color: var(--accent2);
+    text-decoration: line-through;
+    opacity: 0.6;
+  }
+
+  tbody td {
+    padding: 0;
+    border-right: 1px solid var(--border);
+    border-bottom: 1px solid #222;
+    text-align: center;
+    font-size: 0.9rem;
+    height: 44px;
+    position: relative;
+  }
+
+  td.round-label {
+    font-size: 0.7rem;
+    color: var(--muted);
+    background: var(--surface);
+    font-weight: 400;
+  }
+
+  .round-cell {
+    width: 10%;
+  }
+
+  .score-cell {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: background 0.12s;
+    position: relative;
+  }
+
+  .score-cell:hover:not(.cell-winner):not(.cell-eliminated) {
+    background: var(--surface2);
+  }
+
+  .score-cell.cell-active {
+    background: var(--cell-active);
+    outline: 2px solid var(--cell-active-border);
+    outline-offset: -2px;
+    animation: pulse 1.8s ease-in-out infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { outline-color: var(--accent); }
+    50% { outline-color: #a88500; }
+  }
+
+  .score-cell.cell-current-round {
+    background: rgba(245, 200, 66, 0.06);
+  }
+
+  .score-cell.cell-winner {
+    background: rgba(62, 207, 122, 0.12);
+    color: var(--win);
+    font-weight: 700;
+    cursor: default;
+  }
+
+  .score-cell.cell-eliminated {
+    background: var(--eliminated);
+    color: var(--accent2);
+    opacity: 0.6;
+    cursor: default;
+  }
+
+  .score-cell.cell-over50 {
+    /* reset to 25 */
+    color: var(--accent2);
+    font-size: 0.75rem;
+  }
+
+  .score-badge {
+    font-weight: 700;
+  }
+
+  .miss-badge {
+    color: var(--muted);
+    font-size: 0.75rem;
+  }
+
+  /* TOTALS FOOTER */
+  #totals-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: var(--surface);
+    border-top: 2px solid var(--border);
+    z-index: 40;
+    overflow-x: auto;
+  }
+
+  #totals-bar table {
+    min-width: 400px;
+    width: 100%;
+  }
+
+  #totals-bar td {
+    padding: 12px 8px;
+    text-align: center;
+    font-weight: 700;
+    font-size: 0.85rem;
+    border-right: 1px solid var(--border);
+  }
+
+  #totals-bar td.total-label {
+    font-size: 0.65rem;
+    color: var(--muted);
+    font-weight: 400;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    background: var(--bg);
+  }
+
+  .total-val { font-size: 1.1rem; }
+  .total-winner { color: var(--win); }
+  .total-eliminated { color: var(--accent2); opacity: 0.5; }
+  .total-close { color: var(--accent); }
+
+  /* SCORE PICKER MODAL */
+  #modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.75);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+  }
+  #modal-overlay.active { display: flex; }
+
+  .modal {
+    background: var(--surface);
+    border: 2px solid var(--border);
+    padding: 28px;
+    width: min(420px, 94vw);
+    animation: modalIn 0.15s ease-out;
+  }
+
+  @keyframes modalIn {
+    from { opacity: 0; transform: scale(0.95) translateY(8px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
+  }
+
+  .modal-title {
+    font-weight: 800;
+    font-size: 1rem;
+    margin-bottom: 4px;
+  }
+
+  .modal-subtitle {
+    font-size: 0.72rem;
+    color: var(--muted);
+    margin-bottom: 20px;
+  }
+
+  .number-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+
+  .num-btn {
+    aspect-ratio: 1;
+    background: var(--bg);
+    border: 2px solid var(--border);
+    color: var(--text);
+    font-weight: 700;
+    font-size: 1.1rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.1s;
+  }
+  .num-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--cell-active); }
+  .num-btn.miss { font-size: 0.7rem; font-family: 'Space Mono', monospace; color: var(--muted); }
+  .num-btn.miss:hover { color: var(--accent2); border-color: var(--accent2); }
+
+  .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
+
+  /* WIN BANNER */
+  #win-banner {
+    display: none;
+    position: fixed;
+    top: 80px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--win);
+    color: #000;
+    font-weight: 800;
+    font-size: 1rem;
+    padding: 14px 32px;
+    z-index: 200;
+    white-space: nowrap;
+    animation: bannerIn 0.4s cubic-bezier(0.34,1.56,0.64,1);
+    letter-spacing: -0.3px;
+  }
+
+  @keyframes bannerIn {
+    from { opacity: 0; top: 60px; }
+    to { opacity: 1; top: 80px; }
+  }
+
+  .info-bar {
+    padding: 10px 20px;
+    font-size: 0.72rem;
+    color: var(--muted);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    gap: 20px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .info-bar span { display: flex; align-items: center; gap: 6px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; }
+  .dot-active { background: var(--accent); }
+  .dot-win { background: var(--win); }
+  .dot-elim { background: var(--accent2); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Möl<span>kky</span></h1>
+  <div class="header-actions">
+    <button class="btn" id="new-game-btn" style="display:none" onclick="newGame()">New Game</button>
+  </div>
+</header>
+
+<!-- SETUP -->
+<div id="setup-screen">
+  <div class="setup-card">
+    <h2>Set up players</h2>
+    <p>Add 2–8 players to start. First to reach exactly 50 wins!</p>
+    <div class="player-inputs" id="player-inputs"></div>
+    <button class="add-player-btn" id="add-player-btn" onclick="addPlayerInput()">+ Add player</button>
+    <div style="margin-top:28px">
+      <button class="btn btn-accent" style="width:100%;padding:14px" onclick="startGame()">Start Game →</button>
+    </div>
+  </div>
+</div>
+
+<!-- GAME -->
+<div id="game-screen">
+    <table id="score-table">
+        <colgroup>
+            <col class="round-cell"></col>
+        </colgroup>
+        <thead><tr id="header-row"></tr></thead>
+        <tbody id="score-body"></tbody>
+    </table>
+</div>
+
+<!-- TOTALS BAR -->
+<div id="totals-bar" style="display:none">
+    <table id="totals-table">
+        <colgroup>
+            <col class="round-cell"></col>
+        </colgroup>
+      <tbody><tr id="totals-row"></tr></tbody>
+    </table>
+</div>
+
+<!-- MODAL -->
+<div id="modal-overlay">
+  <div class="modal">
+    <div class="modal-title" id="modal-title">Enter score</div>
+    <div class="modal-subtitle" id="modal-subtitle"></div>
+    <div class="number-grid" id="number-grid"></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- WIN BANNER -->
+<div id="win-banner" id="win-banner"></div>
+
+<script>
+// ── STATE ──────────────────────────────────────────────────────────────────
+let players = [];      // { name, scores:[], misses:[], eliminated, won }
+let currentRound = 0;  // 0-indexed
+let currentPlayer = 0; // 0-indexed (whose turn it is)
+let totalRounds = 20;  // grow dynamically
+let gameStarted = false;
+let winnerIndex = -1;
+
+// ── SETUP ──────────────────────────────────────────────────────────────────
+function init() {
+  const inp = document.getElementById('player-inputs');
+  inp.innerHTML = '';
+  addPlayerInput('Player 1');
+  addPlayerInput('Player 2');
+}
+
+function addPlayerInput(name='') {
+  const rows = document.querySelectorAll('.player-row');
+  if (rows.length >= 8) return;
+  const idx = rows.length + 1;
+  const div = document.createElement('div');
+  div.className = 'player-row';
+  div.dataset.idx = idx;
+  div.innerHTML = `
+    <span class="player-num">${idx}</span>
+    <input class="player-input" type="text" placeholder="Player ${idx}" value="${name}" maxlength="14">
+    <button class="remove-btn" onclick="removePlayerInput(this)" title="Remove">✕</button>
+  `;
+  document.getElementById('player-inputs').appendChild(div);
+  // hide add button if 8 players
+  document.getElementById('add-player-btn').style.display =
+    document.querySelectorAll('.player-row').length >= 8 ? 'none' : 'block';
+}
+
+function removePlayerInput(btn) {
+  const rows = document.querySelectorAll('.player-row');
+  if (rows.length <= 2) return;
+  btn.closest('.player-row').remove();
+  // re-number
+  document.querySelectorAll('.player-row').forEach((r, i) => {
+    r.querySelector('.player-num').textContent = i+1;
+    r.querySelector('.player-input').placeholder = `Player ${i+1}`;
+  });
+  document.getElementById('add-player-btn').style.display = 'block';
+}
+
+function startGame() {
+  const inputs = document.querySelectorAll('.player-input');
+  players = [];
+  inputs.forEach((inp, i) => {
+    const name = inp.value.trim() || `Player ${i+1}`;
+    players.push({ name, scores: [], total: 0, misses: 0, eliminated: false, won: false });
+  });
+  if (players.length < 2) { alert('Add at least 2 players!'); return; }
+
+  currentRound = 0;
+  currentPlayer = 0;
+  winnerIndex = -1;
+  gameStarted = true;
+  totalRounds = 20;
+
+  document.getElementById('setup-screen').style.display = 'none';
+  document.getElementById('game-screen').style.display = 'block';
+  document.getElementById('totals-bar').style.display = 'block';
+  document.getElementById('new-game-btn').style.display = 'inline-block';
+
+  buildTable();
+  renderTable();
+}
+
+function newGame() {
+  if (!confirm('Start a new game? Current scores will be lost.')) return;
+  gameStarted = false;
+  document.getElementById('setup-screen').style.display = 'flex';
+  document.getElementById('game-screen').style.display = 'none';
+  document.getElementById('totals-bar').style.display = 'none';
+  document.getElementById('new-game-btn').style.display = 'none';
+  document.getElementById('win-banner').style.display = 'none';
+  init();
+}
+
+// ── TABLE BUILD ────────────────────────────────────────────────────────────
+function buildTable() {
+  // Header
+  const hr = document.getElementById('header-row');
+  hr.innerHTML = `<th class="round-header"></th>`;
+  players.forEach((p, i) => {
+    hr.innerHTML += `<th id="hdr-${i}">${escHtml(p.name)}</th>`;
+  });
+
+  // Clear rows
+  const body = document.getElementById('score-body');
+  body.innerHTML = '';
+
+  // Totals row
+  const tr = document.getElementById('totals-row');
+  tr.innerHTML = `<td class="total-label"></td>`;
+  players.forEach((p, i) => {
+    tr.innerHTML += `<td id="tot-${i}"><span class="total-val">0</span></td>`;
+  });
+
+}
+
+function ensureRows() {
+  const needed = currentRound + 2;
+  if (needed > totalRounds) totalRounds = needed;
+  const body = document.getElementById('score-body');
+  const existing = body.querySelectorAll('tr').length;
+  for (let r = existing; r < totalRounds; r++) {
+    const row = document.createElement('tr');
+    row.id = `row-${r}`;
+    row.innerHTML = `<td class="round-label">${r+1}</td>`;
+    players.forEach((p, pi) => {
+      row.innerHTML += `<td id="cell-${r}-${pi}"><div class="score-cell" onclick="cellClick(${r},${pi})"></div></td>`;
+    });
+    body.appendChild(row);
+  }
+}
+
+// ── RENDER ─────────────────────────────────────────────────────────────────
+function renderTable() {
+  ensureRows();
+
+  players.forEach((p, pi) => {
+    // header
+    const hdr = document.getElementById(`hdr-${pi}`);
+    hdr.className = p.won ? 'winner-col' : p.eliminated ? 'eliminated-col' : '';
+    hdr.textContent = p.name;
+
+    // cells
+    for (let r = 0; r < totalRounds; r++) {
+      const td = document.getElementById(`cell-${r}-${pi}`);
+      if (!td) continue;
+      const div = td.querySelector('.score-cell');
+      const score = p.scores[r];
+      const isActive = (r === currentRound && pi === currentPlayer && !p.eliminated && !p.won && winnerIndex === -1);
+      const isCurrentRound = (r === currentRound);
+
+      div.className = 'score-cell';
+      div.onclick = () => cellClick(r, pi);
+      div.innerHTML = '';
+
+      if (p.won) {
+        div.classList.add('cell-winner');
+        if (score !== undefined) div.innerHTML = `<span class="score-badge">${score}</span>`;
+        div.onclick = () => cellClick(r, pi);
+      } else if (p.eliminated) {
+        div.classList.add('cell-eliminated');
+        if (score !== undefined) div.innerHTML = score === 0
+          ? `<span class="miss-badge">✗</span>`
+          : `<span class="score-badge">${score}</span>`;
+      } else if (score !== undefined) {
+        if (score === 0) div.innerHTML = `<span class="miss-badge">✗</span>`;
+        else div.innerHTML = `<span class="score-badge">${score}</span>`;
+        if (isCurrentRound) div.classList.add('cell-current-round');
+      } else if (isActive) {
+        div.classList.add('cell-active');
+        div.innerHTML = `<span style="color:var(--accent);font-size:1.1rem">+</span>`;
+      } else if (isCurrentRound && !p.won && !p.eliminated) {
+        div.classList.add('cell-current-round');
+      }
+    }
+
+    // totals
+    const tot = document.getElementById(`tot-${pi}`);
+    const total = p.total;
+    tot.innerHTML = `<span class="total-val ${p.won ? 'total-winner' : p.eliminated ? 'total-eliminated' : total >= 45 ? 'total-close' : ''}">${total}</span>`;
+    if (p.won) tot.innerHTML += `<br><span style="font-size:0.6rem;color:var(--win)">WINNER</span>`;
+    if (p.eliminated) tot.innerHTML += `<br><span style="font-size:0.6rem;color:var(--accent2)">OUT</span>`;
+  });
+}
+
+
+// ── CELL CLICK ─────────────────────────────────────────────────────────────
+function cellClick(r, pi) {
+  if (r > currentRound) return; // future cell, not editing
+  openModal(r, pi);
+}
+
+// ── MODAL ──────────────────────────────────────────────────────────────────
+let modalR = -1, modalPi = -1;
+
+function openModal(r, pi) {
+  modalR = r; modalPi = pi;
+  const p = players[pi];
+  document.getElementById('modal-title').textContent = escHtml(p.name);
+  document.getElementById('modal-subtitle').textContent = `Round ${r+1} — current total: ${p.total}`;
+
+  const grid = document.getElementById('number-grid');
+  grid.innerHTML = '';
+
+  // Miss button
+  const missBtn = document.createElement('button');
+  missBtn.className = 'num-btn miss';
+  missBtn.textContent = 'MISS';
+  missBtn.onclick = () => submitScore(0);
+  grid.appendChild(missBtn);
+
+  for (let n = 1; n <= 12; n++) {
+    const btn = document.createElement('button');
+    btn.className = 'num-btn';
+    btn.textContent = n;
+    btn.onclick = () => submitScore(n);
+    grid.appendChild(btn);
+  }
+
+  document.getElementById('modal-overlay').classList.add('active');
+}
+
+function closeModal() {
+  document.getElementById('modal-overlay').classList.remove('active');
+  modalR = -1; modalPi = -1;
+}
+
+function submitScore(score) {
+  const r = modalR, pi = modalPi;
+  closeModal();
+  const p = players[pi];
+  const isEdit = p.scores[r] !== undefined;
+
+  // Un-win / un-eliminate if editing
+  if (isEdit) {
+    p.won = false;
+    p.eliminated = false;
+    winnerIndex = -1;
+    document.getElementById('win-banner').style.display = 'none';
+    // Recompute misses up to this round
+    // We'll recalculate after setting
+  }
+
+  p.scores[r] = score;
+
+  // Recompute misses & state for this player from scratch
+  recomputePlayer(pi);
+
+  // If this was the current active cell, advance turn
+  if (!isEdit && r === currentRound && pi === currentPlayer) {
+    advanceTurn();
+  } else {
+    // just re-render
+    renderTable();
+  }
+}
+
+function recomputePlayer(pi) {
+  const p = players[pi];
+  let total = 0;
+  let consecutiveMisses = 0;
+  p.won = false;
+  p.eliminated = false;
+
+  for (let r = 0; r < p.scores.length; r++) {
+    const s = p.scores[r];
+    if (s === 0) {
+      consecutiveMisses++;
+    } else {
+      consecutiveMisses = 0;
+    }
+    total += s;
+
+    if (total > 50) {
+      total = 25; // over 50 → reset to 25
+    }
+    p.total = total;
+
+    if (total === 50) {
+      p.won = true;
+      winnerIndex = pi;
+      break;
+    }
+
+    if (consecutiveMisses >= 3) {
+      p.eliminated = true;
+      break;
+    }
+  }
+}
+
+function advanceTurn() {
+  // Check if someone won
+  if (winnerIndex !== -1) {
+    showWinner(winnerIndex);
+    // Fix current pointer
+    currentPlayer = winnerIndex;
+    renderTable();
+    return;
+  }
+
+  let next = -1;
+  for (var i=0; i<players.length; i++) {
+    if (players[i].won) {
+        continue;
+    }
+    let num_rounds_scored = players[i].scores.length;
+    if (num_rounds_scored < (currentRound + 1)) {
+        next = i;
+        break;
+    }
+  }
+  if (next < 0) {
+    next = 0;
+    currentRound++;
+    ensureRows();
+  }
+  currentPlayer = next;
+
+  console.log(currentPlayer, currentRound)
+
+  // Check if all players are eliminated
+  const active = players.filter(p => !p.eliminated && !p.won);
+  if (active.length === 0) {
+    currentPlayer = 0;
+  }
+
+  renderTable();
+  scrollToCurrentCell();
+}
+
+function scrollToCurrentCell() {
+  const cell = document.getElementById(`cell-${currentRound}-${currentPlayer}`);
+  if (cell) cell.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
+}
+
+function showWinner(pi) {
+  const banner = document.getElementById('win-banner');
+  banner.textContent = `🏆 ${players[pi].name} wins with 50 points!`;
+  banner.style.display = 'block';
+  setTimeout(() => banner.style.display = 'none', 6000);
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// Close modal on overlay click
+document.getElementById('modal-overlay').addEventListener('click', function(e) {
+  if (e.target === this) closeModal();
+});
+
+// ── INIT ───────────────────────────────────────────────────────────────────
+init();
+</script>
+</body>
+</html>
