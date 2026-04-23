@@ -10,6 +10,7 @@
     navigator.serviceWorker.register('./sw.js');
   }
 </script>
+<script src="localforage.min.js"></script>
 <style>
   :root {
     --bg: #0e0e0e;
@@ -142,6 +143,24 @@
   .player-input:focus { border-color: var(--accent); }
   .player-input::placeholder { color: var(--muted); }
 
+  .player-name {
+    flex: 1;
+    background: var(--bg);
+    border: 2px solid var(--border);
+    color: var(--text);
+    font-family: 'Space Mono', monospace;
+    font-size: 0.85rem;
+    padding: 10px 12px;
+    outline: none;
+    transition: border-color 0.15s;
+    cursor: pointer;
+  }
+
+  .selected {
+    background: var(--cell-active);
+    outline: 2px solid var(--cell-active-border);
+  }
+
   .remove-btn {
     background: none;
     border: 2px solid transparent;
@@ -165,7 +184,6 @@
     font-family: 'Space Mono', monospace;
     font-size: 0.78rem;
     padding: 10px;
-    width: 100%;
     transition: all 0.15s;
     text-transform: uppercase;
     letter-spacing: 0.5px;
@@ -400,6 +418,10 @@
   .num-btn.miss { font-size: 0.7rem; font-family: 'Space Mono', monospace; color: var(--muted); }
   .num-btn.miss:hover { color: var(--accent2); border-color: var(--accent2); }
 
+  .example {
+    display: none;
+  }
+
   .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }
 
   /* WIN BANNER */
@@ -448,22 +470,34 @@
 <header>
   <h1>Möl<span>kky</span></h1>
   <div class="header-actions">
-    <button class="btn" id="new-game-btn" style="display:none" onclick="newGame()">New Game</button>
+    <button class="btn" id="continue-btn" style="display:inline-block">Continue</button>
+    <button class="btn" id="new-game-btn" style="display:none">New Game</button>
   </div>
 </header>
 
 <!-- SETUP -->
 <div id="setup-screen">
   <div class="setup-card">
-    <h2>Set up players</h2>
-    <p>Add 2–8 players to start. First to reach exactly 50 wins!</p>
+    <h2>Select Players</h2>
+    <p>Select 2–8 players to start. First to reach exactly 50 wins!</p>
     <div class="player-inputs" id="player-inputs"></div>
-    <button class="add-player-btn" id="add-player-btn" onclick="addPlayerInput()">+ Add player</button>
+    <div class="player-row">
+      <input id="player-input" class="player-input" type="text" value="" maxlength="14">
+      <button class="add-player-btn" id="add-player-btn">+ Add player</button>
+    </div>
     <div style="margin-top:28px">
-      <button class="btn btn-accent" style="width:100%;padding:14px" onclick="startGame()">Start Game →</button>
+      <button class="btn btn-accent" style="width:100%;padding:14px" id="start-btn">Start Game →</button>
     </div>
   </div>
 </div>
+<!-- Player Template -->
+<template id="player-node-template">
+  <div class="player-row">
+    <span class="player-num"></span>
+    <span class="player-name"></span>
+    <button class="remove-btn" title="Remove">✕</button>
+  </div>
+</template>
 
 <!-- GAME -->
 <div id="game-screen">
@@ -488,361 +522,19 @@
 
 <!-- MODAL -->
 <div id="modal-overlay">
-  <div class="modal">
+  <div class="modal" id="modal">
     <div class="modal-title" id="modal-title">Enter score</div>
     <div class="modal-subtitle" id="modal-subtitle"></div>
     <div class="number-grid" id="number-grid"></div>
     <div class="modal-actions">
-      <button class="btn" onclick="closeModal()">Cancel</button>
+      <button id="cancel-modal" class="btn">Cancel</button>
     </div>
   </div>
 </div>
 
+
 <!-- WIN BANNER -->
 <div id="win-banner" id="win-banner"></div>
-
-<script>
-// ── STATE ──────────────────────────────────────────────────────────────────
-let players = [];      // { name, scores:[], misses:[], eliminated, won }
-let currentRound = 0;  // 0-indexed
-let currentPlayer = 0; // 0-indexed (whose turn it is)
-let totalRounds = 20;  // grow dynamically
-let gameStarted = false;
-let winnerIndex = -1;
-
-// ── SETUP ──────────────────────────────────────────────────────────────────
-function init() {
-  const inp = document.getElementById('player-inputs');
-  inp.innerHTML = '';
-  addPlayerInput('Player 1');
-  addPlayerInput('Player 2');
-}
-
-function addPlayerInput(name='') {
-  const rows = document.querySelectorAll('.player-row');
-  if (rows.length >= 8) return;
-  const idx = rows.length + 1;
-  const div = document.createElement('div');
-  div.className = 'player-row';
-  div.dataset.idx = idx;
-  div.innerHTML = `
-    <span class="player-num">${idx}</span>
-    <input class="player-input" type="text" placeholder="Player ${idx}" value="${name}" maxlength="14">
-    <button class="remove-btn" onclick="removePlayerInput(this)" title="Remove">✕</button>
-  `;
-  document.getElementById('player-inputs').appendChild(div);
-  // hide add button if 8 players
-  document.getElementById('add-player-btn').style.display =
-    document.querySelectorAll('.player-row').length >= 8 ? 'none' : 'block';
-}
-
-function removePlayerInput(btn) {
-  const rows = document.querySelectorAll('.player-row');
-  if (rows.length <= 2) return;
-  btn.closest('.player-row').remove();
-  // re-number
-  document.querySelectorAll('.player-row').forEach((r, i) => {
-    r.querySelector('.player-num').textContent = i+1;
-    r.querySelector('.player-input').placeholder = `Player ${i+1}`;
-  });
-  document.getElementById('add-player-btn').style.display = 'block';
-}
-
-function startGame() {
-  const inputs = document.querySelectorAll('.player-input');
-  players = [];
-  inputs.forEach((inp, i) => {
-    const name = inp.value.trim() || `Player ${i+1}`;
-    players.push({ name, scores: [], total: 0, misses: 0, eliminated: false, won: false });
-  });
-  if (players.length < 2) { alert('Add at least 2 players!'); return; }
-
-  currentRound = 0;
-  currentPlayer = 0;
-  winnerIndex = -1;
-  gameStarted = true;
-  totalRounds = 20;
-
-  document.getElementById('setup-screen').style.display = 'none';
-  document.getElementById('game-screen').style.display = 'block';
-  document.getElementById('totals-bar').style.display = 'block';
-  document.getElementById('new-game-btn').style.display = 'inline-block';
-
-  buildTable();
-  renderTable();
-}
-
-function newGame() {
-  if (!confirm('Start a new game? Current scores will be lost.')) return;
-  gameStarted = false;
-  document.getElementById('setup-screen').style.display = 'flex';
-  document.getElementById('game-screen').style.display = 'none';
-  document.getElementById('totals-bar').style.display = 'none';
-  document.getElementById('new-game-btn').style.display = 'none';
-  document.getElementById('win-banner').style.display = 'none';
-  init();
-}
-
-// ── TABLE BUILD ────────────────────────────────────────────────────────────
-function buildTable() {
-  // Header
-  const hr = document.getElementById('header-row');
-  hr.innerHTML = `<th class="round-header"></th>`;
-  players.forEach((p, i) => {
-    hr.innerHTML += `<th id="hdr-${i}">${escHtml(p.name)}</th>`;
-  });
-
-  // Clear rows
-  const body = document.getElementById('score-body');
-  body.innerHTML = '';
-
-  // Totals row
-  const tr = document.getElementById('totals-row');
-  tr.innerHTML = `<td class="total-label"></td>`;
-  players.forEach((p, i) => {
-    tr.innerHTML += `<td id="tot-${i}"><span class="total-val">0</span></td>`;
-  });
-
-}
-
-function ensureRows() {
-  const needed = currentRound + 2;
-  if (needed > totalRounds) totalRounds = needed;
-  const body = document.getElementById('score-body');
-  const existing = body.querySelectorAll('tr').length;
-  for (let r = existing; r < totalRounds; r++) {
-    const row = document.createElement('tr');
-    row.id = `row-${r}`;
-    row.innerHTML = `<td class="round-label">${r+1}</td>`;
-    players.forEach((p, pi) => {
-      row.innerHTML += `<td id="cell-${r}-${pi}"><div class="score-cell" onclick="cellClick(${r},${pi})"></div></td>`;
-    });
-    body.appendChild(row);
-  }
-}
-
-// ── RENDER ─────────────────────────────────────────────────────────────────
-function renderTable() {
-  ensureRows();
-
-  players.forEach((p, pi) => {
-    // header
-    const hdr = document.getElementById(`hdr-${pi}`);
-    hdr.className = p.won ? 'winner-col' : p.eliminated ? 'eliminated-col' : '';
-    hdr.textContent = p.name;
-
-    // cells
-    for (let r = 0; r < totalRounds; r++) {
-      const td = document.getElementById(`cell-${r}-${pi}`);
-      if (!td) continue;
-      const div = td.querySelector('.score-cell');
-      const score = p.scores[r];
-      const isActive = (r === currentRound && pi === currentPlayer && !p.eliminated && !p.won && winnerIndex === -1);
-      const isCurrentRound = (r === currentRound);
-
-      div.className = 'score-cell';
-      div.onclick = () => cellClick(r, pi);
-      div.innerHTML = '';
-
-      if (p.won) {
-        div.classList.add('cell-winner');
-        if (score !== undefined) div.innerHTML = `<span class="score-badge">${score}</span>`;
-        div.onclick = () => cellClick(r, pi);
-      } else if (p.eliminated) {
-        div.classList.add('cell-eliminated');
-        if (score !== undefined) div.innerHTML = score === 0
-          ? `<span class="miss-badge">✗</span>`
-          : `<span class="score-badge">${score}</span>`;
-      } else if (score !== undefined) {
-        if (score === 0) div.innerHTML = `<span class="miss-badge">✗</span>`;
-        else div.innerHTML = `<span class="score-badge">${score}</span>`;
-        if (isCurrentRound) div.classList.add('cell-current-round');
-      } else if (isActive) {
-        div.classList.add('cell-active');
-        div.innerHTML = `<span style="color:var(--accent);font-size:1.1rem">+</span>`;
-      } else if (isCurrentRound && !p.won && !p.eliminated) {
-        div.classList.add('cell-current-round');
-      }
-    }
-
-    // totals
-    const tot = document.getElementById(`tot-${pi}`);
-    const total = p.total;
-    tot.innerHTML = `<span class="total-val ${p.won ? 'total-winner' : p.eliminated ? 'total-eliminated' : total >= 45 ? 'total-close' : ''}">${total}</span>`;
-    if (p.won) tot.innerHTML += `<br><span style="font-size:0.6rem;color:var(--win)">WINNER</span>`;
-    if (p.eliminated) tot.innerHTML += `<br><span style="font-size:0.6rem;color:var(--accent2)">OUT</span>`;
-  });
-}
-
-
-// ── CELL CLICK ─────────────────────────────────────────────────────────────
-function cellClick(r, pi) {
-  if (r > currentRound) return; // future cell, not editing
-  openModal(r, pi);
-}
-
-// ── MODAL ──────────────────────────────────────────────────────────────────
-let modalR = -1, modalPi = -1;
-
-function openModal(r, pi) {
-  modalR = r; modalPi = pi;
-  const p = players[pi];
-  document.getElementById('modal-title').textContent = escHtml(p.name);
-  document.getElementById('modal-subtitle').textContent = `Round ${r+1} — current total: ${p.total}`;
-
-  const grid = document.getElementById('number-grid');
-  grid.innerHTML = '';
-
-  // Miss button
-  const missBtn = document.createElement('button');
-  missBtn.className = 'num-btn miss';
-  missBtn.textContent = 'MISS';
-  missBtn.onclick = () => submitScore(0);
-  grid.appendChild(missBtn);
-
-  for (let n = 1; n <= 12; n++) {
-    const btn = document.createElement('button');
-    btn.className = 'num-btn';
-    btn.textContent = n;
-    btn.onclick = () => submitScore(n);
-    grid.appendChild(btn);
-  }
-
-  document.getElementById('modal-overlay').classList.add('active');
-}
-
-function closeModal() {
-  document.getElementById('modal-overlay').classList.remove('active');
-  modalR = -1; modalPi = -1;
-}
-
-function submitScore(score) {
-  const r = modalR, pi = modalPi;
-  closeModal();
-  const p = players[pi];
-  const isEdit = p.scores[r] !== undefined;
-
-  // Un-win / un-eliminate if editing
-  if (isEdit) {
-    p.won = false;
-    p.eliminated = false;
-    winnerIndex = -1;
-    document.getElementById('win-banner').style.display = 'none';
-    // Recompute misses up to this round
-    // We'll recalculate after setting
-  }
-
-  p.scores[r] = score;
-
-  // Recompute misses & state for this player from scratch
-  recomputePlayer(pi);
-
-  // If this was the current active cell, advance turn
-  if (!isEdit && r === currentRound && pi === currentPlayer) {
-    advanceTurn();
-  } else {
-    // just re-render
-    renderTable();
-  }
-}
-
-function recomputePlayer(pi) {
-  const p = players[pi];
-  let total = 0;
-  let consecutiveMisses = 0;
-  p.won = false;
-  p.eliminated = false;
-
-  for (let r = 0; r < p.scores.length; r++) {
-    const s = p.scores[r];
-    if (s === 0) {
-      consecutiveMisses++;
-    } else {
-      consecutiveMisses = 0;
-    }
-    total += s;
-
-    if (total > 50) {
-      total = 25; // over 50 → reset to 25
-    }
-    p.total = total;
-
-    if (total === 50) {
-      p.won = true;
-      winnerIndex = pi;
-      break;
-    }
-
-    if (consecutiveMisses >= 3) {
-      p.eliminated = true;
-      break;
-    }
-  }
-}
-
-function advanceTurn() {
-  // Check if someone won
-  if (winnerIndex !== -1) {
-    showWinner(winnerIndex);
-    // Fix current pointer
-    currentPlayer = winnerIndex;
-    renderTable();
-    return;
-  }
-
-  let next = -1;
-  for (var i=0; i<players.length; i++) {
-    if (players[i].won) {
-        continue;
-    }
-    let num_rounds_scored = players[i].scores.length;
-    if (num_rounds_scored < (currentRound + 1)) {
-        next = i;
-        break;
-    }
-  }
-  if (next < 0) {
-    next = 0;
-    currentRound++;
-    ensureRows();
-  }
-  currentPlayer = next;
-
-  console.log(currentPlayer, currentRound)
-
-  // Check if all players are eliminated
-  const active = players.filter(p => !p.eliminated && !p.won);
-  if (active.length === 0) {
-    currentPlayer = 0;
-  }
-
-  renderTable();
-  scrollToCurrentCell();
-}
-
-function scrollToCurrentCell() {
-  const cell = document.getElementById(`cell-${currentRound}-${currentPlayer}`);
-  if (cell) cell.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
-}
-
-function showWinner(pi) {
-  const banner = document.getElementById('win-banner');
-  banner.textContent = `🏆 ${players[pi].name} wins with 50 points!`;
-  banner.style.display = 'block';
-  setTimeout(() => banner.style.display = 'none', 6000);
-}
-
-function escHtml(s) {
-  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-}
-
-// Close modal on overlay click
-document.getElementById('modal-overlay').addEventListener('click', function(e) {
-  if (e.target === this) closeModal();
-});
-
-// ── INIT ───────────────────────────────────────────────────────────────────
-init();
-</script>
+<script type="module" src="app.js"></script>
 </body>
 </html>

@@ -6,7 +6,7 @@ const assets = [
   './app.js',
   './icon-192.png',
   './icon-512.png',
-  './localforge.min.js',
+  './localforage.min.js',
   './manifest.json',
 ];
 
